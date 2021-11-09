@@ -152,12 +152,14 @@ object documents {
  */
 object bank {
 
+  case class CustomerId(value: String) extends AnyVal
+
   /**
    * EXERCISE 1
    *
    * Using only sealed traits and case classes, develop a model of a customer at a bank.
    */
-  case class Customer(id: String)
+  case class Customer(id: CustomerId, name: String, address: String)
 
   /**
    * EXERCISE 2
@@ -182,7 +184,7 @@ object bank {
    * account, including details on the type of bank account, holdings, customer
    * who owns the bank account, and customers who have access to the bank account.
    */
-  case class Account(owner: Customer, accountType: AccountType, balance: Long, accountUsers: List[Customer])
+  case class Account(owner: CustomerId, accountType: AccountType, balance: Long, accountUsers: List[CustomerId])
 }
 
 /**
@@ -226,21 +228,27 @@ object portfolio {
 
   case object APPL extends StockSymbol
 
+  sealed trait Asset
+
+  case class CurrencyAsset(currencyType: CurrencyType, amount: Int) extends Asset
+  case class StockAsset(stockSymbol: StockSymbol, amount: Int) extends Asset
+
   /**
    * EXERCISE 4
    *
    * Using only sealed traits and case classes, develop a model of a portfolio
    * held by a user of the web application.
    */
-  case class Portfolio(currencies: List[(CurrencyType, Int)], stocks: List[(StockSymbol, Int)])
+  case class Portfolio(currencies: List[CurrencyAsset], stocks: List[StockAsset])
 
+  case class UserId(value: String) extends AnyVal
   /**
    * EXERCISE 5
    *
    * Using only sealed traits and case classes, develop a model of a user of
    * the web application.
    */
-  case class User(id: String, portfolio: Portfolio)
+  case class User(id: UserId, portfolio: Portfolio)
 
   /**
    * EXERCISE 6
