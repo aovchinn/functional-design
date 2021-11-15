@@ -108,7 +108,7 @@ object input_stream {
    * EXERCISE 4
    *
    * Construct an IStream that will read the data from `primary`,
-   * but if that fails, it will assemble the data from all the 
+   * but if that fails, it will assemble the data from all the
    * `fragments` by concatenating them into one. Regardless of
    * where the data comes from, everything should be buffered.
    */
@@ -325,7 +325,7 @@ object contact_processing {
      * then the result must also fail. Only if both schema mappings succeed
      * can the resulting schema mapping succeed.
      */
-    def +(that: SchemaMapping): SchemaMapping = ???
+    def +(that: SchemaMapping): SchemaMapping = SchemaMapping(csv => map(csv).flatMap(that.map))
 
     /**
      * EXERCISE 2
@@ -334,7 +334,7 @@ object contact_processing {
      * applying the effects of the first one, unless it fails, and in that
      * case, applying the effects of the second one.
      */
-    def orElse(that: SchemaMapping): SchemaMapping = ???
+    def orElse(that: SchemaMapping): SchemaMapping = SchemaMapping(csv => map(csv).orElse(that.map(csv)))
 
     /**
      * EXERCISE 3
@@ -344,6 +344,20 @@ object contact_processing {
      * final result.
      */
     def protect(columnNames: Set[String]): SchemaMapping = ???
+    //    SchemaMapping { csv =>
+    //      val protectedColumns = columnNames.map(name => (name, csv.columnOf(name), csv.get(name)))
+    //      val cleanContacts    = columnNames.foldLeft(csv)((csvAcc, name) => csvAcc.delete(name))
+    //      map(cleanContacts).map { mapped =>
+    //        protectedColumns.foldLeft(mapped) { (acc, tuple) =>
+    //          for {
+    //            i    <- tuple._2
+    //            data <- tuple._3
+    //            added = acc.add(tuple._1, data)
+    //          } yield added.relocate(tuple._1, i)
+    //        }
+    //      }
+    //    }
+
   }
 
   object SchemaMapping {
