@@ -343,20 +343,20 @@ object contact_processing {
      * preserve the specified column names & their original values in the
      * final result.
      */
-    def protect(columnNames: Set[String]): SchemaMapping = ???
-    //    SchemaMapping { csv =>
-    //      val protectedColumns = columnNames.map(name => (name, csv.columnOf(name), csv.get(name)))
-    //      val cleanContacts    = columnNames.foldLeft(csv)((csvAcc, name) => csvAcc.delete(name))
-    //      map(cleanContacts).map { mapped =>
-    //        protectedColumns.foldLeft(mapped) { (acc, tuple) =>
-    //          for {
-    //            i    <- tuple._2
-    //            data <- tuple._3
-    //            added = acc.add(tuple._1, data)
-    //          } yield added.relocate(tuple._1, i)
-    //        }
-    //      }
-    //    }
+    def protect(columnNames: Set[String]): SchemaMapping = SchemaMapping { csv =>
+          val protectedColumns = columnNames.collect {
+            case name if csv.columnOf(name).isDefined =>
+              (name, csv.columnOf(name).get, csv.get(name).get)
+          }
+
+          map(csv).map { mapped =>
+            protectedColumns.foldLeft(mapped) {
+              case (acc, (name, index, column)) =>
+                acc.delete(name).add(name, column).relocate(name, index).get
+
+            }
+          }
+        }
 
   }
 
@@ -393,6 +393,7 @@ object contact_processing {
       SchemaMapping(csv => MappingResult.Success(csv.delete(name)))
   }
 
+  import SchemaMapping._
   /**
    * EXERCISE 4
    *
@@ -400,7 +401,13 @@ object contact_processing {
    * company's official schema for contacts, by composing schema mappings
    * constructed from constructors and composed & transformed operators.
    */
-  lazy val schemaMapping: SchemaMapping = ???
+  lazy val schemaMapping: SchemaMapping =
+    rename("email", "email_address") +
+      combine("fname", "lname")("full_name")(_ + " " + _) +
+      rename("street", "street_address") +
+      rename("postal", "postal_code") +
+      relocate("full_name", 0)
+
 
   val UserUploadSchema: SchemaCSV =
     SchemaCSV(List("email", "fname", "lname", "country", "street", "postal"))
@@ -466,8 +473,10 @@ object ui_events {
      * Add a method `+` that composes two listeners into a single listener,
      * by sending each game event to both listeners.
      */
-    def +(that: Listener): Listener = ???
-
+    def +(that: Listener): Listener = Listener { event =>
+      onEvent(event)
+      that.onEvent(event)
+    }
     /**
      * EXERCISE 2
      *
@@ -475,7 +484,14 @@ object ui_events {
      * by sending each game event to either the left listener, if it does not
      * throw an exception, or the right listener, if the left throws an exception.
      */
-    def orElse(that: Listener): Listener = ???
+    def orElse(that: Listener): Listener = Listener { event =>
+      try {
+        onEvent(event)
+      } catch {
+        case _: Throwable =>
+          that.onEvent(event)
+      }
+    }
 
     /**
      * EXERCISE 3
@@ -483,7 +499,9 @@ object ui_events {
      * Add a `runOn` operator that returns a Listener that will call this one's
      * `onEvent` callback on the specified `ExecutionContext`.
      */
-    def runOn(ec: scala.concurrent.ExecutionContext): Listener = ???
+    def runOn(ec: scala.concurrent.ExecutionContext): Listener = Listener { event =>
+      ec.execute(() => onEvent(event))
+    }
 
     /**
      * EXERCISE 4
@@ -491,7 +509,10 @@ object ui_events {
      * Add a `debug` unary operator that will call the `onEvent` callback, but
      * before it does, it will print out the game event to the console.
      */
-    def debug: Listener = ???
+    def debug: Listener = Listener { event =>
+      println(event)
+      onEvent(event)
+    }
   }
 
   /**
@@ -501,7 +522,7 @@ object ui_events {
    * listeners in response to each game event, making the gfxUpdateListener
    * run on the `uiExecutionContext`, and debugging the input events.
    */
-  lazy val solution = ???
+  lazy val solution = (twinkleAnimationListener + motionDetectionListener + gfxUpdateListener.runOn(uiExecutionContext)).debug
 
   lazy val twinkleAnimationListener: Listener = ???
   lazy val motionDetectionListener: Listener = ???
@@ -544,7 +565,12 @@ object education {
      * Add a `+` operator that combines this quiz result with the specified
      * quiz result.
      */
-    def +(that: QuizResult): QuizResult = ???
+    def +(that: QuizResult): QuizResult = QuizResult(
+      correctPoints + that.correctPoints,
+      bonusPoints + that.bonusPoints,
+      wrongPoints + that.bonusPoints,
+      wrong ++ that.wrong
+    )
   }
 
   object QuizResult {
@@ -564,14 +590,14 @@ object education {
      *
      * Add an operator `+` that appends this quiz to the specified quiz.
      */
-    def +(that: Quiz): Quiz = ???
+    def +(that: Quiz): Quiz = Quiz(() => run() + that.run())
 
     /**
      * EXERCISE 3
      *
      * Add a unary operator `bonus` that marks this quiz as a bonus quiz.
      */
-    def bonus: Quiz = ???
+    def bonus: Quiz = Quiz(() => run().toBonus)
 
     /**
      * EXERCISE 4
@@ -580,7 +606,10 @@ object education {
      * quiz, and if it returns true, will execute the `ifPass` quiz afterward; but otherwise, will
      * execute the `ifFail` quiz.
      */
-    def check(f: QuizResult => Boolean)(ifPass: Quiz, ifFail: Quiz): Quiz = ???
+    def check(f: QuizResult => Boolean)(ifPass: Quiz, ifFail: Quiz): Quiz = Quiz { () =>
+      val result = run()
+      if (f(result)) result + ifPass.run() else result + ifFail.run()
+    }
   }
 
   object Quiz {
@@ -590,7 +619,7 @@ object education {
 
         checker.isCorrect(submittedAnswer) match {
           case Left(string) => QuizResult(0, 0, checker.points, Vector(string))
-          case Right(string) => QuizResult(checker.points, 0, 0, Vector.empty)
+          case Right(_) => QuizResult(checker.points, 0, 0, Vector.empty)
         }
       }.getOrElse(QuizResult(0, 0, checker.points, Vector("The format of your answer was not recognized")))
 
@@ -604,14 +633,14 @@ object education {
         println(question.question)
 
         question match {
-          case Text(question, checker) => grade(identity(_), checker)
-          case MultipleChoice(question, choices, checker) =>
+          case Text(_, checker) => grade(identity, checker)
+          case MultipleChoice(_, choices, checker) =>
             val choicePrintout = choices.zipWithIndex.map { case (c, i) => s"${i}. ${c}" }.mkString("\n")
 
             println("Your options are: \n" + choicePrintout)
 
             grade(_.toInt, checker)
-          case TrueFalse(question, checker) => grade(_.toLowerCase().startsWith("t"), checker)
+          case TrueFalse(_, checker) => grade(_.toLowerCase().startsWith("t"), checker)
         }
       }
 
@@ -645,6 +674,15 @@ object education {
    * tough bonus question; and if the user fails the bonus question, fallback
    * to a simpler bonus question with fewer bonus points.
    */
+  val tough: Quiz = Quiz(Question.MultipleChoice("asondflnsdlf", Vector("a", "b", "c"), Checker.isMultipleChoice(23)(2))).bonus
+  val easy: Quiz =  Quiz(Question.MultipleChoice("asondflnsdlf", Vector("a", "b", "d"), Checker.isMultipleChoice(3)(1))).bonus
+  val textQ1: Quiz = Quiz(Question.Text("q1?", Checker.isText(1)("one")))
+  val textQ2: Quiz = Quiz(Question.Text("q2?", Checker.isText(2)("two")))
+  val textQ3: Quiz = Quiz(Question.Text("q2?", Checker.isText(2)("two")))
+  val falsy: Quiz = Quiz(Question.TrueFalse("asdsdfsdf?", Checker.isFalse(23)))
+
   lazy val exampleQuiz: Quiz =
-    Quiz(Question.TrueFalse("Is coffee the best hot beverage on planet earth?", Checker.isTrue(10)))
+    Quiz(Question.TrueFalse("Is coffee the best hot beverage on planet earth?", Checker.isTrue(10))) +
+      textQ1 + textQ2.bonus + tough.check(_.bonusPoints != 0)(Quiz.empty, easy) + falsy
+
 }

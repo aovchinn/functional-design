@@ -78,14 +78,21 @@ object spreadsheet {
    * Design a data type called `CalculatedValue`, which represents a `Value` that is dynamically
    * computed from a `Spreadsheet`.
    */
-  final case class CalculatedValue( /* ??? */ ) { self =>
+  final case class CalculatedValue(run: Spreadsheet => Value) { self =>
+    import Value._
 
     /**
      * EXERCISE 2
      *
      * Add an operator that returns a new `CalculatedValue` that is the negated version of this one.
      */
-    def unary_- : CalculatedValue = ???
+    def unary_- : CalculatedValue = CalculatedValue { s =>
+      run(s) match {
+        case e @ Error(_) => e
+        case Str(_) => Error("- is not defined on string")
+        case Dbl(value) => Dbl(-value)
+      }
+    }
 
     /**
      * EXERCISE 3
@@ -93,19 +100,37 @@ object spreadsheet {
      * Add a binary operator `+` that returns a new `CalculatedValue` that is the sum of the two
      * calculated values.
      */
-    def +(that: CalculatedValue): CalculatedValue = ???
+    def +(that: CalculatedValue): CalculatedValue = CalculatedValue { s =>
+      (run(s), that.run(s)) match {
+        case (Dbl(v1), Dbl(v2)) => Dbl(v1 + v2)
+        case (Str(str1), Str(str2)) => Str(str1 + str2)
+        case (e @ Error(_), _) => e
+        case (_, e @ Error(_)) => e
+        case (_, _) => Error("+ is not defined for string, dbl")
+      }
+    }
 
     /**
      * EXERCISE 4
      *
-     * Add a binary operator `-` that returns a new `CalculatedValue` that is the difere;nce of the
+     * Add a binary operator `-` that returns a new `CalculatedValue` that is the difference of the
      * two calculated values.
      */
-    def -(that: CalculatedValue): CalculatedValue = ???
+    def -(that: CalculatedValue): CalculatedValue = CalculatedValue { s =>
+      (run(s), that.run(s)) match {
+        case (Dbl(v1), Dbl(v2)) => Dbl(v1 - v2)
+        case (Str(_), Str(_)) => Error("- is not defined for str")
+        case (e @ Error(_), _) => e
+        case (_, e @ Error(_)) => e
+        case (_, _) => Error("- is not defined for string, dbl")
+      }
+    }
 
     protected def binaryOp(that: CalculatedValue)(error: String)(
       f: PartialFunction[(Value, Value), Value]
-    ): CalculatedValue = ???
+    ): CalculatedValue = CalculatedValue { s =>
+       f.lift(run(s), that.run(s)).getOrElse(Error(error))
+    }
   }
   object CalculatedValue {
 
@@ -114,7 +139,7 @@ object spreadsheet {
      *
      * Add a constructor that makes an `CalculatedValue` from a `Value`.
      */
-    def const(contents: Value): CalculatedValue = ???
+    def const(contents: Value): CalculatedValue = CalculatedValue(_ => contents)
 
     /**
      * EXERCISE 6
@@ -122,15 +147,16 @@ object spreadsheet {
      * Add a constructor that provides access to the value of the
      * specified cell, identified by col/row.
      */
-    def at(col: Int, row: Int): CalculatedValue = ???
+    def at(col: Int, row: Int): CalculatedValue = CalculatedValue(s => s.valueAt(col, row).run(s))
   }
 
+  import CalculatedValue._
   /**
    * EXERCISE 7
    *
    * Describe a cell whose contents are the sum of the cells at (0, 0) and (1, 0).
    */
-  lazy val cell1: Cell = ???
+  lazy val cell1: Cell = Cell(1, 1, at(0,0) + at(1, 0))
 }
 
 /**
